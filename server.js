@@ -124,41 +124,57 @@ app.post('/login', async (req, res) => {
 
 // ── PUSH : envoyer les données depuis un appareil ──
 app.post('/sync/push', requireAuth, (req, res) => {
-  const { dataTypes } = req.body; // { vases: [...], daily_checks: [...], goals: [...], finance: {...} }
+  const { dataTypes } = req.body;
   if (!dataTypes) return res.status(400).json({ error: 'Données manquantes' });
 
-  const upsert = db.prepare('INSERT OR REPLACE INTO sync_data (device_id,data_type,payload,synced_at) VALUES (?,?,?,datetime("now"))');
-  const tx = db.transaction(() => {
-    Object.entries(dataTypes).forEach(([type, data]) => {
-      upsert.run(req.deviceId, type, JSON.stringify(data));
-    });
+  // Normalise les noms de clés — le mobile envoie "checks", le PC envoie "checks" ou "daily_checks"
+  const normalised = {};
+  Object.entries(dataTypes).forEach(([key, value]) => {
+    // Toujours stocker sous le nom canonique
+    const canonKey = key === 'daily_checks' ? 'checks' : key;
+    normalised[canonKey] = value;
   });
-  tx();
-  log(req.deviceId, `push:${Object.keys(dataTypes).join(',')}`);
-  res.json({ ok: true, synced_at: new Date().toISOString() });
+
+  const upsert = db.prepare('INSERT OR REPLACE INTO sync_data (device_id,data_type,payload,synced_at) VALUES (?,?,?,datetime("now"))');
+  try {
+    db.transaction(() => {
+      Object.entries(normalised).forEach(([type, data]) => {
+        upsert.run(req.deviceId, type, JSON.stringify(data));
+      });
+    })();
+    log(req.deviceId, `push:${Object.keys(normalised).join(',')}`);
+    res.json({ ok: true, synced_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('Push error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
-// ── PULL : récupérer les données les plus récentes (tous appareils confondus) ──
+// ── PULL : récupérer les données les plus récentes ──
 app.get('/sync/pull', requireAuth, (req, res) => {
-  const types = ['vases','daily_checks','goals','finance_accounts','finance_entries','settings'];
+  // "checks" est le nom canonique côté serveur (compatible mobile + PC)
+  const types = ['vases', 'checks', 'goals', 'finance_accounts', 'finance_entries'];
   const result = {};
 
-  types.forEach(type => {
-    // Get the most recently synced version of each type
-    const row = db.prepare(
-      'SELECT payload, device_id, synced_at FROM sync_data WHERE data_type=? ORDER BY synced_at DESC LIMIT 1'
-    ).get(type);
-    if (row) {
-      result[type] = {
-        data: JSON.parse(row.payload),
-        from_device: row.device_id,
-        synced_at: row.synced_at
-      };
-    }
-  });
-
-  log(req.deviceId, 'pull');
-  res.json({ ok: true, data: result, pulled_at: new Date().toISOString() });
+  try {
+    types.forEach(type => {
+      const row = db.prepare(
+        'SELECT payload, device_id, synced_at FROM sync_data WHERE data_type=? ORDER BY synced_at DESC LIMIT 1'
+      ).get(type);
+      if (row) {
+        result[type] = {
+          data: JSON.parse(row.payload),
+          from_device: row.device_id,
+          synced_at: row.synced_at
+        };
+      }
+    });
+    log(req.deviceId, 'pull');
+    res.json({ ok: true, data: result, pulled_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('Pull error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ── STATUS : info sur les syncs ──
@@ -178,6 +194,17 @@ app.post('/reset-pin', requireAuth, async (req, res) => {
   db.prepare('INSERT OR REPLACE INTO config (key,value) VALUES (?,?)').run('pin_hash', hash);
   log(req.deviceId, 'pin_reset');
   res.json({ ok: true, message: 'PIN mis à jour' });
+});
+
+// ── GLOBAL ERROR HANDLER — always returns JSON, never HTML ──
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ ok: false, error: err.message || 'Erreur interne du serveur' });
+});
+
+// 404 handler — aussi en JSON
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: `Route introuvable : ${req.method} ${req.path}` });
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
