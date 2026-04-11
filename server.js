@@ -152,8 +152,7 @@ app.post('/sync/push', requireAuth, (req, res) => {
 
 // ── PULL : récupérer les données les plus récentes ──
 app.get('/sync/pull', requireAuth, (req, res) => {
-  // "checks" est le nom canonique côté serveur (compatible mobile + PC)
-  const types = ['vases', 'checks', 'goals', 'finance_accounts', 'finance_entries'];
+  const types = ['vases', 'checks', 'checks_ls', 'goals', 'finance_accounts', 'finance_entries'];
   const result = {};
 
   try {
