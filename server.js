@@ -135,7 +135,7 @@ app.post('/sync/push', requireAuth, (req, res) => {
     normalised[canonKey] = value;
   });
 
-  const upsert = db.prepare('INSERT OR REPLACE INTO sync_data (device_id,data_type,payload,synced_at) VALUES (?,?,?,datetime("now"))');
+  const upsert = db.prepare("INSERT OR REPLACE INTO sync_data (device_id,data_type,payload,synced_at) VALUES (?,?,?,datetime('now'))");
   try {
     db.transaction(() => {
       Object.entries(normalised).forEach(([type, data]) => {
