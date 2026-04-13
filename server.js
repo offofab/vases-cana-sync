@@ -152,7 +152,11 @@ app.post('/sync/push', requireAuth, (req, res) => {
 
 // ── PULL : récupérer les données les plus récentes ──
 app.get('/sync/pull', requireAuth, (req, res) => {
-  const types = ['vases', 'checks', 'checks_ls', 'goals', 'finance_accounts', 'finance_entries'];
+  const types = [
+    'vases', 'checks', 'checks_ls', 'goals',
+    'finance_accounts', 'finance_entries',
+    'fin_goals', 'depenses_data', 'entrees_data', 'budget_data'
+  ];
   const result = {};
 
   try {
