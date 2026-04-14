@@ -186,7 +186,16 @@ app.get('/sync/status', requireAuth, (req, res) => {
     'SELECT data_type, device_id, synced_at FROM sync_data ORDER BY synced_at DESC'
   ).all();
   const logs = db.prepare('SELECT * FROM sync_log ORDER BY ts DESC LIMIT 20').all();
-  res.json({ ok: true, syncEntries: rows, recentLogs: logs });
+  // Retourner le timestamp du dernier push pour comparaison côté client
+  const lastPushRow = db.prepare(
+    'SELECT MAX(synced_at) as last_push FROM sync_data'
+  ).get();
+  res.json({
+    ok: true,
+    last_push: lastPushRow?.last_push || null,
+    syncEntries: rows,
+    recentLogs: logs
+  });
 });
 
 // ── RESET PIN ──
